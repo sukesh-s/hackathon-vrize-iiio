@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { CallRecord, Mood, Priority, Resolution } from '../types';
+import type { CallDetail, CallRecord, Mood, Priority, Resolution } from '../types';
 
 interface DashboardParticipant {
   id: string;
@@ -44,6 +44,16 @@ interface DashboardCall {
     }>;
   };
   recordingUrl: string;
+  transcript?: Array<{
+    id?: number;
+    start?: number;
+    end?: number;
+    text?: string;
+    speaker?: {
+      role?: string;
+      name?: string | null;
+    };
+  }>;
 }
 
 interface DashboardCallsResponse {
@@ -170,5 +180,22 @@ export async function getDashboardCalls({
   return {
     ...response.data,
     calls: response.data.calls.map(mapDashboardCall),
+  };
+}
+
+export async function getDashboardCall(id: string, signal?: AbortSignal): Promise<CallDetail> {
+  const response = await dashboardApi.get<DashboardCall>(`/dashboard/calls/${id}`, { signal });
+  const call = mapDashboardCall(response.data);
+
+  return {
+    ...call,
+    transcript: (response.data.transcript ?? []).map((segment, index) => ({
+      id: Number.isFinite(segment.id) ? Number(segment.id) : index,
+      start: Number(segment.start) || 0,
+      end: Number(segment.end) || Number(segment.start) || 0,
+      text: segment.text?.trim() || '',
+      speakerRole: segment.speaker?.role || 'unknown',
+      speakerName: segment.speaker?.name || null,
+    })),
   };
 }

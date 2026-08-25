@@ -17,6 +17,19 @@ export interface CallEvidence {
   supports: string;
 }
 
+export interface TranscriptSegment {
+  id: number;
+  start: number;
+  end: number;
+  text: string;
+  speakerRole: string;
+  speakerName: string | null;
+}
+
+export interface CallDetail extends CallRecord {
+  transcript: TranscriptSegment[];
+}
+
 export type UploadStatus = 'idle' | 'uploading' | 'processing' | 'completed' | 'failed';
 
 export interface UploadTask {

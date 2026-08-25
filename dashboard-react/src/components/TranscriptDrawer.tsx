@@ -1,333 +1,118 @@
-import { useState } from 'react';
-import type { CallRecord } from '../types';
-import { TRANSCRIPT_TURNS } from '../data';
+import { useEffect, useRef, useState } from 'react';
+import { getDashboardCall } from '../api/dashboardApi';
+import type { CallDetail, CallRecord, TranscriptSegment } from '../types';
 
-interface Props {
-  call: CallRecord;
-  onClose: () => void;
+interface Props { call: CallRecord; onClose: () => void }
+
+function formatTime(seconds: number) {
+  const safe = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
+}
+
+function speakerLabel(segment: TranscriptSegment) {
+  if (segment.speakerName) return segment.speakerName;
+  const role = segment.speakerRole.toLowerCase();
+  if (role === 'caller' || role === 'customer') return 'Customer';
+  if (role === 'agent') return 'Agent';
+  return 'Unknown speaker';
 }
 
 export default function TranscriptDrawer({ call, onClose }: Props) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const activeRef = useRef<HTMLDivElement>(null);
+  const [detail, setDetail] = useState<CallDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(37);
-  const totalSeconds = 462;
-  const currentSeconds = Math.round((progress / 100) * totalSeconds);
-  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(call.durationSeconds);
 
-  const filtered = search
-    ? TRANSCRIPT_TURNS.filter((t) =>
-        t.text.toLowerCase().includes(search.toLowerCase()) ||
-        t.speaker.toLowerCase().includes(search.toLowerCase())
-      )
-    : TRANSCRIPT_TURNS;
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    getDashboardCall(call.id, controller.signal)
+      .then(setDetail)
+      .catch((requestError) => {
+        if (!controller.signal.aborted) setError(requestError instanceof Error ? requestError.message : 'Unable to load transcript');
+      })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [call.id]);
 
-  return (
-    <div
-      role="complementary"
-      aria-label="Full transcript"
-      style={{ position: 'fixed', inset: 0, zIndex: 300 }}
-    >
-      {/* Backdrop */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'rgba(17, 24, 39, 0.3)',
-        }}
-        onClick={onClose}
-        aria-hidden="true"
-      />
+  const transcript = detail?.transcript ?? [];
+  const evidenceIds = new Set(call.evidence.map((item) => item.segmentId));
+  const activeSegmentId = transcript.find((segment) => currentTime >= segment.start && currentTime < Math.max(segment.end, segment.start + 0.1))?.id;
+  const query = search.trim().toLowerCase();
+  const filtered = query ? transcript.filter((segment) => `${speakerLabel(segment)} ${segment.speakerRole} ${segment.text}`.toLowerCase().includes(query)) : transcript;
 
-      {/* Drawer panel */}
-      <div
-        style={{
-          position: 'absolute',
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: 480,
-          background: '#fff',
-          boxShadow: '-6px 0 32px rgba(0,0,0,0.12)',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: '15px 18px 13px',
-            borderBottom: '1px solid #E5E7EB',
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              justifyContent: 'space-between',
-              marginBottom: 5,
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#1F2937' }}>
-                {call.customer}
-              </div>
-              <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontFamily: 'monospace' }}>{call.reference}</span>
-                <span>·</span>
-                <span>{call.agent}</span>
-                <span>·</span>
-                <span>{call.date} {call.time}</span>
-                <span>·</span>
-                <span>{call.duration}</span>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              aria-label="Close transcript"
-              style={{
-                width: 28,
-                height: 28,
-                border: '1px solid #E5E7EB',
-                borderRadius: 5,
-                background: '#fff',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6B7280' }}>
-                close
-              </span>
-            </button>
-          </div>
+  useEffect(() => {
+    if (playing && !query) activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [activeSegmentId, playing, query]);
+
+  async function togglePlayback() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) await audio.play(); else audio.pause();
+  }
+
+  async function seekTo(seconds: number) {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = seconds;
+    setCurrentTime(seconds);
+    await audio.play();
+  }
+
+  return <div role="complementary" aria-label="Full transcript" style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
+    <div onClick={onClose} aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'rgba(17,24,39,.3)' }} />
+    <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 520, maxWidth: '100vw', background: '#fff', boxShadow: '-6px 0 32px rgba(0,0,0,.12)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '15px 18px 13px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div><div style={{ fontSize: 15, fontWeight: 600 }}>{call.customer}</div><div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>{call.reference} · {call.agent} · {call.date} {call.time} · {call.duration}</div></div>
+        <button onClick={onClose} aria-label="Close transcript" style={{ width: 28, height: 28, border: '1px solid #E5E7EB', borderRadius: 5, background: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6B7280' }}>close</span></button>
+      </div>
+
+      <div style={{ padding: '11px 18px', borderBottom: '1px solid #E5E7EB', flexShrink: 0 }}>
+        <audio ref={audioRef} src={call.recordingUrl} preload="metadata" onLoadedMetadata={() => { const value = audioRef.current?.duration; if (value != null && Number.isFinite(value)) setDuration(value); }} onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
+        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 9 }}>
+          <button onClick={() => void togglePlayback()} aria-label={playing ? 'Pause' : 'Play'} style={{ width: 30, height: 30, borderRadius: '50%', background: '#3B5CCC', border: 0, cursor: 'pointer', display: 'grid', placeItems: 'center' }}><span className="material-symbols-outlined" style={{ fontSize: 17, color: '#fff' }}>{playing ? 'pause' : 'play_arrow'}</span></button>
+          <input type="range" min={0} max={Math.max(duration, 1)} step={0.1} value={Math.min(currentTime, duration || 0)} onChange={(event) => { const value = Number(event.target.value); if (audioRef.current) audioRef.current.currentTime = value; setCurrentTime(value); }} aria-label="Seek audio" style={{ flex: 1 }} />
+          <span style={{ fontSize: 11, color: '#6B7280', whiteSpace: 'nowrap' }}>{formatTime(currentTime)} / {formatTime(duration)}</span>
         </div>
+      </div>
 
-        {/* Audio player */}
-        <div
-          style={{
-            padding: '11px 18px',
-            borderBottom: '1px solid #E5E7EB',
-            flexShrink: 0,
-          }}
-        >
-          <div
-            style={{
-              background: '#F9FAFB',
-              border: '1px solid #E5E7EB',
-              borderRadius: 6,
-              padding: '8px 12px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 9,
-            }}
-          >
-            <button
-              onClick={() => setPlaying((p) => !p)}
-              aria-label={playing ? 'Pause' : 'Play'}
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: '50%',
-                background: '#3B5CCC',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 17, color: '#fff' }}>
-                {playing ? 'pause' : 'play_arrow'}
-              </span>
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={progress}
-              onChange={(e) => setProgress(Number(e.target.value))}
-              aria-label="Seek"
-              style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: 11, color: '#6B7280', whiteSpace: 'nowrap' }}>
-              {fmt(currentSeconds)} / 7:42
-            </span>
-          </div>
-        </div>
+      <div style={{ padding: '10px 18px', borderBottom: '1px solid #E5E7EB', flexShrink: 0 }}><div style={{ position: 'relative' }}><span className="material-symbols-outlined" style={{ position: 'absolute', left: 9, top: 9, fontSize: 16, color: '#9CA3AF' }}>search</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search transcript…" aria-label="Search transcript" style={{ width: '100%', height: 34, padding: '0 10px 0 30px', border: '1px solid #E5E7EB', borderRadius: 5, boxSizing: 'border-box', fontFamily: 'inherit' }} /></div></div>
 
-        {/* Search transcript */}
-        <div
-          style={{
-            padding: '10px 18px',
-            borderBottom: '1px solid #E5E7EB',
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ position: 'relative' }}>
-            <span
-              className="material-symbols-outlined"
-              style={{
-                position: 'absolute',
-                left: 9,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                fontSize: 16,
-                color: '#9CA3AF',
-                pointerEvents: 'none',
-              }}
-            >
-              search
-            </span>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search transcript…"
-              aria-label="Search transcript"
-              style={{
-                width: '100%',
-                height: 34,
-                padding: '0 10px 0 30px',
-                border: '1px solid #E5E7EB',
-                borderRadius: 5,
-                fontSize: 13,
-                color: '#1F2937',
-                boxSizing: 'border-box',
-                outline: 'none',
-                fontFamily: 'inherit',
-              }}
-              onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = '#3B5CCC'; }}
-              onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = '#E5E7EB'; }}
-            />
-          </div>
-        </div>
+      <div style={{ padding: '7px 18px', borderBottom: '1px solid #E5E7EB', display: 'flex', gap: 16, fontSize: 11, color: '#6B7280' }}><span>● <span style={{ color: '#3B5CCC' }}>Agent</span></span><span>● <span style={{ color: '#7C3AED' }}>Customer</span></span><span>● <span style={{ color: '#B45309' }}>Evidence</span></span></div>
 
-        {/* Speaker legend */}
-        <div
-          style={{
-            padding: '7px 18px',
-            borderBottom: '1px solid #E5E7EB',
-            display: 'flex',
-            gap: 16,
-            flexShrink: 0,
-          }}
-        >
-          {[
-            { label: 'Agent', color: '#3B5CCC' },
-            { label: 'Customer', color: '#7C3AED' },
-            { label: 'Highlighted evidence', color: '#B45309', bg: '#FFFBEB' },
-          ].map((item) => (
-            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <div
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: item.color,
-                  flexShrink: 0,
-                }}
-              />
-              <span style={{ fontSize: 11, color: '#6B7280' }}>{item.label}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Transcript turns */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '14px 18px' }}>
-          {filtered.length === 0 ? (
-            <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, paddingTop: 32 }}>
-              No matching turns found.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-              {filtered.map((turn, i) => {
-                const isCustomer = turn.speaker === 'Customer';
-                return (
-                  <div key={i} style={{ display: 'flex', gap: 10 }}>
-                    {/* Timestamp — clickable to seek */}
-                    <button
-                      aria-label={`Seek to ${turn.time}`}
-                      title="Click to seek audio to this point"
-                      style={{
-                        flexShrink: 0,
-                        paddingTop: 3,
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: 10,
-                        color: '#9CA3AF',
-                        fontFamily: 'monospace',
-                        lineHeight: 1.4,
-                        minWidth: 32,
-                        textAlign: 'right',
-                      }}
-                      onClick={() => {
-                        const [mm, ss] = turn.time.split(':').map(Number);
-                        const totalSec = mm * 60 + ss;
-                        setProgress(Math.round((totalSec / totalSeconds) * 100));
-                      }}
-                    >
-                      {turn.time}
-                    </button>
-
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 700,
-                          color: isCustomer ? '#7C3AED' : '#3B5CCC',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.06em',
-                          marginBottom: 3,
-                        }}
-                      >
-                        {turn.speaker}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          color: '#374151',
-                          lineHeight: 1.58,
-                          background: turn.highlight ? '#FFFBEB' : 'transparent',
-                          border: turn.highlight ? '1px solid #FDE68A' : '1px solid transparent',
-                          borderRadius: turn.highlight ? 5 : 0,
-                          padding: turn.highlight ? '5px 7px' : 0,
-                        }}
-                      >
-                        {search ? (
-                          <HighlightMatch text={turn.text} query={search} />
-                        ) : (
-                          turn.text
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+      <div style={{ flex: 1, overflow: 'auto', padding: '14px 18px' }}>
+        {loading && <StateMessage>Loading transcript…</StateMessage>}
+        {error && <StateMessage color="#B91C1C">Failed to load transcript: {error}</StateMessage>}
+        {!loading && !error && filtered.length === 0 && <StateMessage>{query ? 'No matching transcript segments.' : 'No transcript is available for this call.'}</StateMessage>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+          {filtered.map((segment) => {
+            const role = segment.speakerRole.toLowerCase();
+            const customer = role === 'caller' || role === 'customer';
+            const active = segment.id === activeSegmentId;
+            const evidence = evidenceIds.has(segment.id);
+            return <div ref={active ? activeRef : undefined} key={segment.id} style={{ display: 'flex', gap: 10, background: active ? '#EEF2FF' : evidence ? '#FFFBEB' : 'transparent', border: `1px solid ${active ? '#C7D2FE' : evidence ? '#FDE68A' : 'transparent'}`, borderRadius: 5, padding: '6px 7px', transition: 'background .15s ease' }}>
+              <button onClick={() => void seekTo(segment.start)} aria-label={`Play from ${formatTime(segment.start)}`} title="Play from this point" style={{ flexShrink: 0, background: 'none', border: 0, cursor: 'pointer', fontSize: 10, color: active ? '#3B5CCC' : '#9CA3AF', fontFamily: 'monospace', minWidth: 38, textAlign: 'right', padding: 0 }}>{formatTime(segment.start)}</button>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 10, fontWeight: 700, color: customer ? '#7C3AED' : '#3B5CCC', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 3 }}>{speakerLabel(segment)}{active ? ' · Playing' : ''}</div><div style={{ fontSize: 13, color: '#374151', lineHeight: 1.58 }}>{query ? <HighlightMatch text={segment.text} query={search.trim()} /> : segment.text}</div></div>
+            </div>;
+          })}
         </div>
       </div>
     </div>
-  );
+  </div>;
+}
+
+function StateMessage({ children, color = '#9CA3AF' }: { children: React.ReactNode; color?: string }) {
+  return <div style={{ textAlign: 'center', color, fontSize: 13, paddingTop: 32 }}>{children}</div>;
 }
 
 function HighlightMatch({ text, query }: { text: string; query: string }) {
-  if (!query) return <>{text}</>;
-  const idx = text.toLowerCase().indexOf(query.toLowerCase());
-  if (idx === -1) return <>{text}</>;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <mark style={{ background: '#FEF08A', borderRadius: 2, padding: '0 1px' }}>
-        {text.slice(idx, idx + query.length)}
-      </mark>
-      {text.slice(idx + query.length)}
-    </>
-  );
+  const index = text.toLowerCase().indexOf(query.toLowerCase());
+  if (index < 0) return <>{text}</>;
+  return <>{text.slice(0, index)}<mark style={{ background: '#FEF08A', borderRadius: 2 }}>{text.slice(index, index + query.length)}</mark>{text.slice(index + query.length)}</>;
 }
