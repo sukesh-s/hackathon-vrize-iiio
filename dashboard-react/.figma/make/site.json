@@ -1,0 +1,10 @@
+{
+  "description": "Empower support managers to efficiently review call recordings, prioritize critical calls, and access AI-driven insights all in one streamlined dashboard.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
