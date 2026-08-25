@@ -35,12 +35,14 @@ export interface CallRecord {
   agent: string;
   date: string;
   time: string;
+  startedAt: string;
   duration: string;
   durationSeconds: number;
   intent: string;
   mood: Mood;
   resolution: Resolution;
   score: number;
+  needsAttention: boolean;
   summary?: string;
   recordingUrl?: string;
   initialMood: Mood;

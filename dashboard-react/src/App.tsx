@@ -24,6 +24,7 @@ export default function App() {
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [resolutionFilter, setResolutionFilter] = useState('all');
   const [moodFilter, setMoodFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -85,22 +86,31 @@ export default function App() {
     setPriorityFilter('all');
     setResolutionFilter('all');
     setMoodFilter('all');
+    setDateFilter('');
   };
 
   const filteredCalls = calls.filter((c) => {
-    const q = search.toLowerCase();
-    if (
-      q &&
-      !c.customer.toLowerCase().includes(q) &&
-      !c.agent.toLowerCase().includes(q) &&
-      !c.id.toLowerCase().includes(q) &&
-      !c.intent.toLowerCase().includes(q)
-    ) {
-      return false;
-    }
+    const query = search.trim().toLowerCase();
+    const searchableText = [
+      c.customer,
+      c.agent,
+      c.id,
+      c.reference,
+      c.intent,
+      c.summary ?? '',
+      ...c.evidence.flatMap((item) => [item.text, item.supports, item.speakerRole]),
+    ].join(' ').toLowerCase();
+
+    if (query && !searchableText.includes(query)) return false;
     if (priorityFilter !== 'all' && c.priority !== priorityFilter) return false;
     if (resolutionFilter !== 'all' && c.resolution !== resolutionFilter) return false;
     if (moodFilter !== 'all' && c.mood !== moodFilter) return false;
+    if (dateFilter) {
+      const startedAt = new Date(c.startedAt);
+      if (Number.isNaN(startedAt.getTime())) return false;
+      const localDate = [startedAt.getFullYear(), String(startedAt.getMonth() + 1).padStart(2, '0'), String(startedAt.getDate()).padStart(2, '0')].join('-');
+      if (localDate !== dateFilter) return false;
+    }
     return true;
   });
 
@@ -117,7 +127,7 @@ export default function App() {
 
       <main style={{ maxWidth: 1380, margin: '0 auto', padding: '24px 32px 48px' }}>
         <PageIntro onUpload={() => setUploadOpen(true)} uploadTask={uploadTask} />
-        <KpiCards />
+        <KpiCards calls={calls} loading={callsLoading} />
         <FilterToolbar
           search={search}
           onSearch={setSearch}
@@ -127,6 +137,8 @@ export default function App() {
           onResolution={setResolutionFilter}
           mood={moodFilter}
           onMood={setMoodFilter}
+          date={dateFilter}
+          onDate={setDateFilter}
           onClear={handleClearFilters}
         />
         {callsLoading && (

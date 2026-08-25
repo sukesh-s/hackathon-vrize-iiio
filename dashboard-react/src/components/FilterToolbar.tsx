@@ -9,6 +9,8 @@ interface Props {
   onResolution: (v: string) => void;
   mood: string;
   onMood: (v: string) => void;
+  date: string;
+  onDate: (v: string) => void;
   onClear: () => void;
 }
 
@@ -38,11 +40,13 @@ export default function FilterToolbar({
   onResolution,
   mood,
   onMood,
+  date,
+  onDate,
   onClear,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const hasFilters =
-    search !== '' || priority !== 'all' || resolution !== 'all' || mood !== 'all';
+    search.trim() !== '' || priority !== 'all' || resolution !== 'all' || mood !== 'all' || date !== '';
 
   return (
     <div
@@ -75,7 +79,7 @@ export default function FilterToolbar({
           type="text"
           value={search}
           onChange={(e) => onSearch(e.target.value)}
-          placeholder="Search customer, agent, call ID, issue or transcript…"
+          placeholder="Search customer, agent, call ID, summary or evidence…"
           aria-label="Search calls"
           style={{
             width: '100%',
@@ -164,8 +168,8 @@ export default function FilterToolbar({
         <option value="angry">Angry</option>
       </select>
 
-      {/* Date */}
-      <button
+      <label
+        aria-label="Filter by date"
         style={{
           height: 38,
           padding: '0 12px',
@@ -184,8 +188,14 @@ export default function FilterToolbar({
         <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6B7280' }}>
           date_range
         </span>
-        Date
-      </button>
+        <input
+          type="date"
+          value={date}
+          onChange={(event) => onDate(event.target.value)}
+          aria-label="Call date"
+          style={{ border: 0, outline: 0, background: 'transparent', color: '#374151', fontFamily: 'inherit', fontSize: 13, cursor: 'pointer' }}
+        />
+      </label>
 
       {/* Clear */}
       {hasFilters && (

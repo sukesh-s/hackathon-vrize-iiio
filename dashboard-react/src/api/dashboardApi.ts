@@ -29,6 +29,7 @@ interface DashboardCall {
   resolution: { status?: string } | null;
   summary: string | null;
   attention: {
+    needed?: boolean;
     score: number;
     priority: string;
     reasons?: Array<{
@@ -123,12 +124,14 @@ function mapDashboardCall(call: DashboardCall): CallRecord {
           hour12: false,
         }).format(startedAt)
       : '--:--',
+    startedAt: call.startedAt,
     duration: formatDuration(call.durationSeconds),
     durationSeconds: call.durationSeconds,
     intent: call.intent?.label || 'Unknown intent',
     mood: mapMood(call.mood?.final),
     resolution: mapResolution(call.resolution?.status),
     score: Math.min(100, Math.max(0, Number(call.attention?.score) || 0)),
+    needsAttention: call.attention?.needed === true,
     summary: call.summary || undefined,
     recordingUrl: call.recordingUrl,
     initialMood: mapMood(call.mood?.initial),
