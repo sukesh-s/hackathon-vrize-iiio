@@ -1,4 +1,8 @@
 export default function Header() {
+  const today = () => {
+    const date = new Date().toDateString();
+    return date;
+  };
   return (
     <header
       style={{
@@ -89,7 +93,7 @@ export default function Header() {
           >
             calendar_month
           </span>
-          21 Aug – 25 Aug 2026
+          {today()}
         </button>
       </div>
     </header>
