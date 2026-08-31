@@ -2,6 +2,26 @@
 
 Call Intelligence turns customer-service recordings into searchable, evidence-backed call analysis. A user uploads one audio recording together with its metadata JSON file. The system prepares the audio, transcribes it, identifies speakers, analyses emotion and call outcomes, stores the results in PostgreSQL, and displays prioritised calls in a React dashboard.
 
+## Table of contents
+
+- [What the system produces](#what-the-system-produces)
+- [Architecture](#architecture)
+- [Why this technology stack?](#why-this-technology-stack)
+- [Audio processing](#audio-processing)
+- [Open-source AI models](#open-source-ai-models)
+- [Prerequisites](#prerequisites)
+- [Local setup](#local-setup)
+  - [1. Start PostgreSQL and restore the database](#1-start-postgresql-and-restore-the-database)
+  - [2. Build the Rust audio processor](#2-build-the-rust-audio-processor)
+  - [3. Start the Kaggle model service](#3-start-the-kaggle-model-service)
+  - [4. Configure and start the Node.js API](#4-configure-and-start-the-nodejs-api)
+  - [5. Start the React dashboard](#5-start-the-react-dashboard)
+- [Uploading a call](#uploading-a-call)
+- [Main API endpoints](#main-api-endpoints)
+- [Data storage](#data-storage)
+- [Processing and deduplication flow](#processing-and-deduplication-flow)
+- [Notes for production](#notes-for-production)
+
 ## What the system produces
 
 For each call, the application provides:
@@ -129,7 +149,7 @@ docker compose version
 
 ## Local setup
 
-### 1. Start PostgreSQL
+### 1. Start PostgreSQL and restore the database
 
 ```bash
 cd node-audio-service
@@ -137,7 +157,20 @@ docker compose up -d postgres
 docker compose ps
 ```
 
-Create the database tables from the SQL dump:
+Restore the included PostgreSQL backup. It contains the database schema and the call data prepared for this project:
+
+```bash
+docker exec -i postgres \
+  pg_restore \
+  -U appuser \
+  -d appdb \
+  --clean \
+  --if-exists \
+  --no-owner \
+  < call_radar_db.dump
+```
+
+The restore command replaces existing project tables when they are present. To create an empty database without the included call data, initialise only the schema instead:
 
 ```bash
 docker exec -i postgres \
