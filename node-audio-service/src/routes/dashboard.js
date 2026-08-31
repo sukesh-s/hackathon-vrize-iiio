@@ -156,11 +156,13 @@ router.get("/calls", async (req, res) => {
     }
 
     const resolution = req.query.resolution ?? null;
+    const search = req.query.search ?? null;
     const { total, rows } = await listDashboardCalls({
       limit,
       offset,
       needsAttention,
       resolution,
+      search,
     });
 
     return res.json({

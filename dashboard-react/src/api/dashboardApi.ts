@@ -172,18 +172,20 @@ export async function getDashboardCalls({
   offset = 0,
   attention,
   resolution,
+  search,
   signal,
 }: {
   limit?: number;
   offset?: number;
   attention?: 'needed' | 'not_needed';
   resolution?: Resolution;
+  search?: string;
   signal?: AbortSignal;
 } = {}) {
   const response = await dashboardApi.get<DashboardCallsResponse>(
     '/dashboard/calls',
     {
-      params: { limit, offset, attention, resolution },
+      params: { limit, offset, attention, resolution, search },
       signal,
     },
   );

@@ -432,6 +432,7 @@ async function listDashboardCalls({
   offset = 0,
   needsAttention = null,
   resolution = null,
+  search = null,
 } = {}) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
     throw new TypeError("limit must be an integer between 1 and 500");
@@ -457,6 +458,15 @@ async function listDashboardCalls({
     );
   }
 
+  if (search !== null && typeof search !== "string") {
+    throw new TypeError("search must be a string or null");
+  }
+
+  const normalizedSearch = search?.trim() || null;
+  if (normalizedSearch && normalizedSearch.length > 200) {
+    throw new TypeError("search must not exceed 200 characters");
+  }
+
   const conditions = [];
   const filterValues = [];
 
@@ -475,6 +485,24 @@ async function listDashboardCalls({
     filterValues.push(resolution);
     conditions.push(
       `LOWER(COALESCE(at.ai_summary #>> '{resolution,status}', 'unknown')) = $${filterValues.length}`,
+    );
+  }
+
+  if (normalizedSearch) {
+    filterValues.push(`%${normalizedSearch}%`);
+    const searchParameter = `$${filterValues.length}`;
+    conditions.push(
+      `(pa.id::text ILIKE ${searchParameter}
+        OR pa.original_filename ILIKE ${searchParameter}
+        OR COALESCE(cm.raw_metadata ->> 'sid', '') ILIKE ${searchParameter}
+        OR at.ai_summary::text ILIKE ${searchParameter}
+        OR at.transcript_json::text ILIKE ${searchParameter}
+        OR EXISTS (
+          SELECT 1
+            FROM users search_user
+           WHERE search_user.external_speaker_id = ANY(cm.participant_speaker_ids)
+             AND COALESCE(search_user.name, '') ILIKE ${searchParameter}
+        ))`,
     );
   }
 

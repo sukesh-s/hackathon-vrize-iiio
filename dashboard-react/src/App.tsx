@@ -27,6 +27,7 @@ export default function App() {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [transcriptCall, setTranscriptCall] = useState<CallRecord | null>(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [attentionFilter, setAttentionFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [resolutionFilter, setResolutionFilter] = useState('all');
@@ -45,6 +46,7 @@ export default function App() {
           offset: page * pageSize,
           attention: attentionFilter === 'all' ? undefined : attentionFilter as 'needed' | 'not_needed',
           resolution: resolutionFilter === 'all' ? undefined : resolutionFilter as CallRecord['resolution'],
+          search: debouncedSearch || undefined,
           signal: controller.signal,
         });
         setCalls(result.calls);
@@ -60,7 +62,16 @@ export default function App() {
 
     void loadCalls();
     return () => controller.abort();
-  }, [attentionFilter, callsVersion, page, pageSize, resolutionFilter]);
+  }, [attentionFilter, callsVersion, debouncedSearch, page, pageSize, resolutionFilter]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(0);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -133,18 +144,6 @@ export default function App() {
   };
 
   const filteredCalls = calls.filter((c) => {
-    const query = search.trim().toLowerCase();
-    const searchableText = [
-      c.customer,
-      c.agent,
-      c.id,
-      c.reference,
-      c.intent,
-      c.summary ?? '',
-      ...c.evidence.flatMap((item) => [item.text, item.supports, item.speakerRole]),
-    ].join(' ').toLowerCase();
-
-    if (query && !searchableText.includes(query)) return false;
     if (priorityFilter !== 'all' && c.priority !== priorityFilter) return false;
     if (moodFilter !== 'all' && c.mood !== moodFilter) return false;
     if (dateFilter) {

@@ -20,6 +20,7 @@ Call Intelligence turns customer-service recordings into searchable, evidence-ba
 - [Main API endpoints](#main-api-endpoints)
 - [Data storage](#data-storage)
 - [Processing and deduplication flow](#processing-and-deduplication-flow)
+- [Limitations](#limitations)
 - [Notes for production](#notes-for-production)
 
 ## What the system produces
@@ -314,6 +315,18 @@ Transcript and analysis objects are stored as PostgreSQL `JSONB`; they do not ne
 11. Save the transcript and analysis and return the completed result.
 
 Changing a filename does not change its SHA-256 signature. However, an original MP3 and its converted WAV contain different bytes, so the input and output signatures are stored separately.
+
+## Limitations
+
+This project uses open-source AI models hosted on Kaggle's free GPU environment. It is suitable for demonstrations and experimentation, but its output should not be treated as a guaranteed or final quality decision.
+
+- Transcription, speaker identification, sentiment, intent, resolution, summaries, and attention scores may vary between model versions, runtime configurations, and repeated processing.
+- Telephone-quality 8 kHz audio, background noise, accents, overlapping speech, short utterances, and unclear channel separation can reduce transcription and speaker-attribution accuracy.
+- The relatively small language and emotion models were selected to fit free compute limits. They may misunderstand context, produce inconsistent classifications, or cite evidence that requires human review.
+- Kaggle's free GPU sessions have limited runtime, memory, and availability. Sessions can stop without notice, cached models may need to be downloaded again, and the temporary Cloudflare Tunnel URL changes after a restart.
+- GPU hardware primarily affects processing time and service availability. Small numerical differences are possible across hardware and library versions, but model capability and input-audio quality are the main sources of result variation.
+- Manager-attention scores are decision-support signals, not objective measurements. A support manager should verify the cited transcript and recording before taking action.
+- The current system processes calls synchronously and depends on local PostgreSQL and recording paths, so it is not designed for concurrent production workloads or portable media storage.
 
 ## Notes for production
 
