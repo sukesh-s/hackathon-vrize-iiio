@@ -30,6 +30,14 @@ export interface CallDetail extends CallRecord {
   transcript: TranscriptSegment[];
 }
 
+export interface DashboardSummary {
+  totalCalls: number;
+  needsAttention: number;
+  unresolved: number;
+  resolved: number;
+  resolutionRate: number;
+}
+
 export type UploadStatus = 'idle' | 'uploading' | 'processing' | 'completed' | 'failed';
 
 export interface UploadTask {

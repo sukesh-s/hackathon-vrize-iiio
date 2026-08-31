@@ -427,27 +427,78 @@ const DASHBOARD_CALL_SELECT = `
   ) AS participants
 `;
 
-async function listDashboardCalls({ limit = 20, offset = 0 } = {}) {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-    throw new TypeError("limit must be an integer between 1 and 100");
+async function listDashboardCalls({
+  limit = 20,
+  offset = 0,
+  needsAttention = null,
+  resolution = null,
+} = {}) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw new TypeError("limit must be an integer between 1 and 500");
   }
 
   if (!Number.isInteger(offset) || offset < 0) {
     throw new TypeError("offset must be a non-negative integer");
   }
 
+  if (needsAttention !== null && typeof needsAttention !== "boolean") {
+    throw new TypeError("needsAttention must be true, false, or null");
+  }
+
+  const allowedResolutions = [
+    "resolved",
+    "partially_resolved",
+    "unresolved",
+    "unclear",
+  ];
+  if (resolution !== null && !allowedResolutions.includes(resolution)) {
+    throw new TypeError(
+      `resolution must be one of: ${allowedResolutions.join(", ")}`,
+    );
+  }
+
+  const conditions = [];
+  const filterValues = [];
+
+  if (needsAttention !== null) {
+    filterValues.push(String(needsAttention));
+    conditions.push(
+      `LOWER(COALESCE(at.ai_summary #>> '{needsManagerAttention,needed}', 'false')) = $${filterValues.length}`,
+    );
+  }
+
+  if (resolution === "unclear") {
+    conditions.push(
+      `LOWER(COALESCE(at.ai_summary #>> '{resolution,status}', 'unknown')) NOT IN ('resolved', 'partially_resolved', 'unresolved')`,
+    );
+  } else if (resolution !== null) {
+    filterValues.push(resolution);
+    conditions.push(
+      `LOWER(COALESCE(at.ai_summary #>> '{resolution,status}', 'unknown')) = $${filterValues.length}`,
+    );
+  }
+
+  const whereClause =
+    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
   const countResult = await pool.query(
     `SELECT COUNT(*)::integer AS total
        FROM processed_audio pa
        JOIN audio_transcriptions at ON at.processed_audio_id = pa.id
-       LEFT JOIN call_metadata cm ON cm.processed_audio_id = pa.id`,
+       LEFT JOIN call_metadata cm ON cm.processed_audio_id = pa.id
+       ${whereClause}`,
+    filterValues,
   );
+
+  const limitParameter = filterValues.length + 1;
+  const offsetParameter = filterValues.length + 2;
 
   const result = await pool.query(
     `SELECT ${DASHBOARD_CALL_SELECT}
        FROM processed_audio pa
        JOIN audio_transcriptions at ON at.processed_audio_id = pa.id
        LEFT JOIN call_metadata cm ON cm.processed_audio_id = pa.id
+      ${whereClause}
       ORDER BY
         CASE
           WHEN at.ai_summary #>> '{needsManagerAttention,score}' ~ '^\\d+$'
@@ -458,13 +509,56 @@ async function listDashboardCalls({ limit = 20, offset = 0 } = {}) {
           (cm.raw_metadata ->> 'start_time_ms')::bigint,
           (EXTRACT(EPOCH FROM pa.created_at) * 1000)::bigint
         ) DESC
-      LIMIT $1 OFFSET $2`,
-    [limit, offset],
+      LIMIT $${limitParameter} OFFSET $${offsetParameter}`,
+    [...filterValues, limit, offset],
   );
 
   return {
     total: countResult.rows[0].total,
     rows: result.rows,
+  };
+}
+
+async function getDashboardSummary() {
+  const result = await pool.query(
+    `WITH analysed_calls AS (
+       SELECT at.ai_summary
+         FROM audio_transcriptions at
+        WHERE at.ai_summary IS NOT NULL
+          AND at.ai_summary <> 'null'::jsonb
+     ), totals AS (
+       SELECT
+         COUNT(*)::integer AS "totalCalls",
+         COUNT(*) FILTER (
+           WHERE LOWER(COALESCE(ai_summary #>> '{needsManagerAttention,needed}', 'false')) = 'true'
+         )::integer AS "needsAttention",
+         COUNT(*) FILTER (
+           WHERE LOWER(COALESCE(ai_summary #>> '{resolution,status}', '')) = 'unresolved'
+         )::integer AS unresolved,
+         COUNT(*) FILTER (
+           WHERE LOWER(COALESCE(ai_summary #>> '{resolution,status}', '')) = 'resolved'
+         )::integer AS resolved
+       FROM analysed_calls
+     )
+     SELECT
+       "totalCalls",
+       "needsAttention",
+       unresolved,
+       resolved,
+       CASE
+         WHEN "totalCalls" = 0 THEN 0
+         ELSE ROUND((resolved::numeric / "totalCalls") * 100, 1)
+       END AS "resolutionRate"
+     FROM totals`,
+  );
+
+  const summary = result.rows[0];
+  return {
+    totalCalls: summary.totalCalls,
+    needsAttention: summary.needsAttention,
+    unresolved: summary.unresolved,
+    resolved: summary.resolved,
+    resolutionRate: Number(summary.resolutionRate),
   };
 }
 
@@ -496,6 +590,7 @@ module.exports = {
   findIfTranscriptionExists,
   findTranscriptionByProcessedAudioId,
   findBySignature,
+  getDashboardSummary,
   listDashboardCalls,
   saveCallMetadata,
   updateAiSummary,

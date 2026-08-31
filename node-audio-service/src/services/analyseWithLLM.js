@@ -12,6 +12,27 @@ Intent evidence should normally come from customer statements.
 Resolution evidence must demonstrate the outcome, not merely the request.
 If the evidence is insufficient, use "unknown" and an empty evidence list.
 
+The manager-attention score MUST be an integer from 0 to 100, not a boolean
+or a 0-to-1 probability. Calculate it using only evidenced conditions:
+- Start at 0.
+- Add 30 for an unresolved outcome, or 15 for a partially resolved outcome.
+- Add 25 for evidenced fraud, security, legal, regulatory, or financial-loss risk.
+- Add 20 for evidenced anger, escalation, abuse, threats, or severe distress.
+- Add 15 when the customer explicitly says this is a repeated contact or recurring issue.
+- Add 10 for an evidenced negative mood shift.
+- Add 10 for evidenced agent error, misinformation, refusal, or failure to act.
+- Cap the total at 100.
+
+Score meaning:
+- 0-19: no attention required
+- 20-39: low concern; monitor
+- 40-59: manager review recommended
+- 60-79: high priority
+- 80-100: critical
+
+Set needsManagerAttention.needed to true if and only if score is 40 or more.
+Every reason contributing points must cite one or more evidenceSegmentIds.
+
 Return this structure:
 {
   "intent": {
@@ -188,11 +209,44 @@ function createEvidenceResolver(segments) {
   };
 }
 
+function normalizeManagerAttention(managerAttention, resolution = {}) {
+  const modelNeeded = managerAttention?.needed === true;
+  const numericScore = Number(managerAttention?.score);
+  const roundedScore = Number.isFinite(numericScore)
+    ? Math.round(numericScore)
+    : null;
+  const scoreIsBinary = roundedScore === 0 || roundedScore === 1;
+  let score;
+
+  if (roundedScore !== null && !scoreIsBinary) {
+    score = Math.min(100, Math.max(0, roundedScore));
+  } else if (!modelNeeded) {
+    score = 0;
+  } else {
+    const fallbackByResolution = {
+      unresolved: 60,
+      partially_resolved: 45,
+      resolved: 40,
+      unknown: 40,
+    };
+    score = fallbackByResolution[resolution?.status] ?? 40;
+  }
+
+  return {
+    needed: score >= 40,
+    score,
+  };
+}
+
 function enrichCallAnalysisEvidence(callAnalysis, segments) {
   const resolveEvidence = createEvidenceResolver(segments);
   const intent = callAnalysis?.intent ?? {};
   const resolution = callAnalysis?.resolution ?? {};
   const managerAttention = callAnalysis?.needsManagerAttention ?? {};
+  const normalizedManagerAttention = normalizeManagerAttention(
+    managerAttention,
+    resolution,
+  );
   const reasons = Array.isArray(managerAttention.reasons)
     ? managerAttention.reasons
     : [];
@@ -213,6 +267,7 @@ function enrichCallAnalysisEvidence(callAnalysis, segments) {
     summary: String(callAnalysis?.summary || "").trim(),
     needsManagerAttention: {
       ...managerAttention,
+      ...normalizedManagerAttention,
       reasons: reasons.map((reason) => {
         const evidence = resolveEvidence(reason.evidenceSegmentIds);
 
@@ -296,4 +351,5 @@ async function analyzeCall(analysisResult) {
 module.exports = {
   analyzeTheTranscriptSegments,
   analyzeCall,
+  normalizeManagerAttention,
 };

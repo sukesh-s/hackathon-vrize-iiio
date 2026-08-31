@@ -6,7 +6,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node --env-file=.env src/server.js",
-    "dev": "node --env-file=.env --watch src/server.js"
+    "dev": "node --env-file=.env --watch src/server.js",
+    "batch:transcribe": "node --env-file=.env scripts/batch-transcribe.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",

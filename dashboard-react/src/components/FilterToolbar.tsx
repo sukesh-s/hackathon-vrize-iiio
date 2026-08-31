@@ -3,6 +3,8 @@ import { CSSProperties, useRef } from 'react';
 interface Props {
   search: string;
   onSearch: (v: string) => void;
+  attention: string;
+  onAttention: (v: string) => void;
   priority: string;
   onPriority: (v: string) => void;
   resolution: string;
@@ -34,6 +36,8 @@ const selectStyle: CSSProperties = {
 export default function FilterToolbar({
   search,
   onSearch,
+  attention,
+  onAttention,
   priority,
   onPriority,
   resolution,
@@ -46,7 +50,7 @@ export default function FilterToolbar({
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const hasFilters =
-    search.trim() !== '' || priority !== 'all' || resolution !== 'all' || mood !== 'all' || date !== '';
+    search.trim() !== '' || attention !== 'all' || priority !== 'all' || resolution !== 'all' || mood !== 'all' || date !== '';
 
   return (
     <div
@@ -125,6 +129,18 @@ export default function FilterToolbar({
           </button>
         )}
       </div>
+
+      {/* Manager attention */}
+      <select
+        value={attention}
+        onChange={(e) => onAttention(e.target.value)}
+        aria-label="Filter by manager attention"
+        style={selectStyle}
+      >
+        <option value="all">All attention</option>
+        <option value="needed">Needs attention</option>
+        <option value="not_needed">No attention needed</option>
+      </select>
 
       {/* Priority */}
       <select

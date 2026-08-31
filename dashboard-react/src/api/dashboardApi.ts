@@ -1,5 +1,12 @@
 import axios from 'axios';
-import type { CallDetail, CallRecord, Mood, Priority, Resolution } from '../types';
+import type {
+  CallDetail,
+  CallRecord,
+  DashboardSummary,
+  Mood,
+  Priority,
+  Resolution,
+} from '../types';
 
 interface DashboardParticipant {
   id: string;
@@ -161,18 +168,22 @@ function mapDashboardCall(call: DashboardCall): CallRecord {
 }
 
 export async function getDashboardCalls({
-  limit = 100,
+  limit = 50,
   offset = 0,
+  attention,
+  resolution,
   signal,
 }: {
   limit?: number;
   offset?: number;
+  attention?: 'needed' | 'not_needed';
+  resolution?: Resolution;
   signal?: AbortSignal;
 } = {}) {
   const response = await dashboardApi.get<DashboardCallsResponse>(
     '/dashboard/calls',
     {
-      params: { limit, offset },
+      params: { limit, offset, attention, resolution },
       signal,
     },
   );
@@ -181,6 +192,11 @@ export async function getDashboardCalls({
     ...response.data,
     calls: response.data.calls.map(mapDashboardCall),
   };
+}
+
+export async function getDashboardSummary(signal?: AbortSignal): Promise<DashboardSummary> {
+  const response = await dashboardApi.get<DashboardSummary>('/dashboard/summary', { signal });
+  return response.data;
 }
 
 export async function getDashboardCall(id: string, signal?: AbortSignal): Promise<CallDetail> {

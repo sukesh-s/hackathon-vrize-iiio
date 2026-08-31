@@ -107,9 +107,15 @@ function ScoreBar({ score }: { score: number }) {
 
 interface Props {
   calls: CallRecord[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageItemCount: number;
   expandedId: string | null;
   onToggle: (id: string) => void;
   onViewTranscript: (call: CallRecord) => void;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
 }
 
 const TH: CSSProperties = {
@@ -135,10 +141,20 @@ const TD: CSSProperties = {
 
 export default function CallsTable({
   calls,
+  total,
+  page,
+  pageSize,
+  pageItemCount,
   expandedId,
   onToggle,
   onViewTranscript,
+  onPageChange,
+  onPageSizeChange,
 }: Props) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const rangeStart = total === 0 ? 0 : page * pageSize + 1;
+  const rangeEnd = total === 0 ? 0 : Math.min(page * pageSize + pageItemCount, total);
+
   return (
     <div
       style={{
@@ -172,7 +188,7 @@ export default function CallsTable({
               borderRadius: 10,
             }}
           >
-            {calls.length}
+            {total.toLocaleString()}
           </span>
         </div>
         <div
@@ -450,6 +466,109 @@ export default function CallsTable({
             No calls match your current filters.
           </div>
         )}
+      </div>
+
+      <div
+        style={{
+          minHeight: 56,
+          padding: "8px 16px",
+          borderTop: "1px solid #E5E7EB",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+          color: "#6B7280",
+          fontSize: 12,
+          boxSizing: "border-box",
+        }}
+      >
+        <div aria-live="polite">
+          Showing {rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()} of {total.toLocaleString()} calls
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            Results per page
+            <select
+              aria-label="Results per page"
+              value={pageSize}
+              onChange={(event) => onPageSizeChange(Number(event.target.value))}
+              style={{
+                height: 34,
+                padding: "0 28px 0 9px",
+                border: "1px solid #D1D5DB",
+                borderRadius: 6,
+                background: "#fff",
+                color: "#374151",
+                fontFamily: "inherit",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {[50, 100, 200, 500].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <span>
+            Page {(page + 1).toLocaleString()} of {totalPages.toLocaleString()}
+          </span>
+
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              disabled={page === 0}
+              onClick={() => onPageChange(page - 1)}
+              style={{
+                height: 34,
+                padding: "0 11px",
+                border: "1px solid #D1D5DB",
+                borderRadius: 6,
+                background: page === 0 ? "#F9FAFB" : "#fff",
+                color: page === 0 ? "#9CA3AF" : "#374151",
+                fontFamily: "inherit",
+                fontSize: 12,
+                cursor: page === 0 ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                chevron_left
+              </span>
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={page + 1 >= totalPages}
+              onClick={() => onPageChange(page + 1)}
+              style={{
+                height: 34,
+                padding: "0 11px",
+                border: "1px solid #D1D5DB",
+                borderRadius: 6,
+                background: page + 1 >= totalPages ? "#F9FAFB" : "#fff",
+                color: page + 1 >= totalPages ? "#9CA3AF" : "#374151",
+                fontFamily: "inherit",
+                fontSize: 12,
+                cursor: page + 1 >= totalPages ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+              }}
+            >
+              Next
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                chevron_right
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

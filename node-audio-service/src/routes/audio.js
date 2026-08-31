@@ -234,19 +234,11 @@ router.post("/transcribe", uploadMiddleware, async (req, res) => {
       });
 
       return res.json({
-        kaggleTranscript,
-        diarizationInfo,
-        analysisResult,
-        llmAnalysisResult,
-        speakerMap,
-        callMetadata: savedCallMetadata,
+        record: llmAnalysisResult,
       });
     }
     return res.json({
-      kaggleTranscript,
-      record: savedRecord,
-      transcribeInputFilePath,
-      needToTranscribeAgain,
+      record: savedRecord.needToTranscribeAgain,
       isExists: existingInputRecord !== null,
       speakerMap,
       callMetadata: savedCallMetadata,

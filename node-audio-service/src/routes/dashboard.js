@@ -2,8 +2,12 @@ const express = require("express");
 const fs = require("node:fs");
 const {
   findDashboardCallById,
+  getDashboardSummary,
   listDashboardCalls,
 } = require("../services/dbService");
+const {
+  normalizeManagerAttention,
+} = require("../services/analyseWithLLM");
 
 const router = express.Router();
 
@@ -87,7 +91,11 @@ function formatDashboardCall(row, { includeDetail = false } = {}) {
   const agent = findParticipant(participants, "agent");
   const analysis = row.aiSummary ?? {};
   const attention = analysis.needsManagerAttention ?? {};
-  const score = clampScore(attention.score);
+  const normalizedAttention = normalizeManagerAttention(
+    attention,
+    analysis.resolution,
+  );
+  const score = clampScore(normalizedAttention.score);
   const startTimeMs = Number(row.rawMetadata?.start_time_ms);
   const mood = buildMood(getEmotionSegments(row.transcriptJson));
 
@@ -105,7 +113,7 @@ function formatDashboardCall(row, { includeDetail = false } = {}) {
     resolution: analysis.resolution ?? null,
     summary: analysis.summary ?? null,
     attention: {
-      needed: attention.needed === true,
+      needed: normalizedAttention.needed,
       score,
       priority: getPriority(score),
       reasons: Array.isArray(attention.reasons) ? attention.reasons : [],
@@ -122,11 +130,38 @@ function formatDashboardCall(row, { includeDetail = false } = {}) {
   return result;
 }
 
+router.get("/summary", async (_req, res) => {
+  try {
+    return res.json(await getDashboardSummary());
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 router.get("/calls", async (req, res) => {
   try {
     const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
     const offset = req.query.offset === undefined ? 0 : Number(req.query.offset);
-    const { total, rows } = await listDashboardCalls({ limit, offset });
+    const attention = req.query.attention;
+    const needsAttention =
+      attention === undefined
+        ? null
+        : attention === "needed"
+          ? true
+          : attention === "not_needed"
+            ? false
+            : "invalid";
+    if (needsAttention === "invalid") {
+      throw new TypeError("attention must be needed or not_needed");
+    }
+
+    const resolution = req.query.resolution ?? null;
+    const { total, rows } = await listDashboardCalls({
+      limit,
+      offset,
+      needsAttention,
+      resolution,
+    });
 
     return res.json({
       total,
